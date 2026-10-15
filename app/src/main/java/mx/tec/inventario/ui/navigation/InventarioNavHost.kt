@@ -1,7 +1,8 @@
 package mx.tec.inventario.ui.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -12,6 +13,7 @@ import mx.tec.inventario.ui.components.CargandoView
 import mx.tec.inventario.ui.screens.DetalleScreen
 import mx.tec.inventario.ui.screens.FormularioScreen
 import mx.tec.inventario.ui.screens.ListaScreen
+import mx.tec.inventario.ui.state.AppViewModelProvider
 import mx.tec.inventario.ui.state.DetalleViewModel
 import mx.tec.inventario.ui.state.FormularioViewModel
 import mx.tec.inventario.ui.state.ListaViewModel
@@ -23,16 +25,15 @@ fun InventarioApp() {
     NavHost(navController = nav, startDestination = Route.LISTA) {
 
         composable(Route.LISTA) {
-            val viewModel: ListaViewModel = viewModel()
-
-            // Hay que volver a preguntar cada vez que se entra: la lista pudo
-            // haber cambiado desde otra pantalla.
-            LaunchedEffect(Unit) { viewModel.recargar() }
+            // Un ViewModel por pantalla, y todos salen de la misma Factory: ya
+            // no se construyen solos porque necesitan el repositorio.
+            val viewModel: ListaViewModel = viewModel(factory = AppViewModelProvider.Factory)
+            val productos by viewModel.productos.collectAsStateWithLifecycle()
 
             ListaScreen(
-                productos = viewModel.productos,
+                productos = productos,
                 onProductoClick = { id -> nav.navigate(Route.detalle(id)) },
-                onNuevoClick = { nav.navigate(Route.NUEVO) }
+                onNuevoClick = { nav.navigate(Route.NUEVO) },
             )
         }
 
@@ -41,12 +42,12 @@ fun InventarioApp() {
             arguments = listOf(navArgument(Route.ARG_PRODUCTO_ID) { type = NavType.IntType })
         ) { entry ->
             val id = entry.arguments?.getInt(Route.ARG_PRODUCTO_ID) ?: return@composable
-            val viewModel: DetalleViewModel = viewModel()
+            val viewModel: DetalleViewModel = viewModel(factory = AppViewModelProvider.Factory)
+            val producto by viewModel.producto.collectAsStateWithLifecycle()
 
-            // Y aquí otra vez, porque el usuario pudo venir de editarlo.
-            LaunchedEffect(Unit) { viewModel.recargar() }
-
-            val actual = viewModel.producto
+// null mientras la consulta va en camino, y también el instante
+// posterior a borrar, cuando la fila ya no existe.
+            val actual = producto
             if (actual == null) {
                 CargandoView()
             } else {
@@ -54,15 +55,14 @@ fun InventarioApp() {
                     producto = actual,
                     onVenderUno = { viewModel.venderUno() },
                     onEditar = { nav.navigate(Route.editar(id)) },
-                    onBorrar = { viewModel.borrar { nav.popBackStack(Route.LISTA, false) } },
+                    onBorrar = { viewModel.borrar { nav.popBackStack(Route.LISTA, inclusive = false) } },
                     onBack = { nav.popBackStack() }
                 )
             }
         }
 
         composable(Route.NUEVO) {
-            val viewModel: FormularioViewModel = viewModel()
-
+            val viewModel: FormularioViewModel = viewModel(factory = AppViewModelProvider.Factory)
             FormularioScreen(
                 uiState = viewModel.uiState,
                 esEdicion = viewModel.esEdicion,
@@ -78,7 +78,7 @@ fun InventarioApp() {
             route = Route.EDITAR,
             arguments = listOf(navArgument(Route.ARG_PRODUCTO_ID) { type = NavType.IntType })
         ) {
-            val viewModel: FormularioViewModel = viewModel()
+            val viewModel: FormularioViewModel = viewModel(factory = AppViewModelProvider.Factory)
 
             FormularioScreen(
                 uiState = viewModel.uiState,
